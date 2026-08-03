@@ -307,8 +307,11 @@ void handleCommand(const String &line) {
     emitStatus("calibration_saved");
   } else if (!strcmp(command, "clear_calibration")) {
     calibration = Calibration{};
-    saveCalibration();
+    preferences.begin("turbidimeter", false);
+    preferences.clear();
+    preferences.end();
     emitStatus("calibration_cleared");
+    sendConfiguration();
   } else {
     emitStatus("command", false, "Comando desconocido");
   }

@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const history = [];
 const calibrationPoints = [];
-let port, reader, writer, keepReading = false, latest = null, fitResult = null;
+let port, reader, writer, keepReading = false, latest = null, fitResult = null, blankDeltaMv = null, pendingCalibrationClear = false;
 
 const chartOptions = {responsive:true,maintainAspectRatio:false,animation:false,scales:{x:{ticks:{color:'#8fa7b1',maxTicksLimit:8},grid:{color:'#1c303b'}},y:{ticks:{color:'#8fa7b1'},grid:{color:'#1c303b'}}},plugins:{legend:{labels:{color:'#cce0e5'}}}};
 function lineChart(id, datasets, linearX=false){return new Chart($(id),{type:'line',data:{labels:[],datasets},options:{...chartOptions,parsing:linearX?false:undefined,scales:linearX?{...chartOptions.scales,x:{...chartOptions.scales.x,type:'linear'}}:chartOptions.scales}})}
@@ -20,6 +20,7 @@ function bindEvents(){
   $('connect').onclick=connectSerial; $('start').onclick=()=>send({cmd:'start'}); $('stop').onclick=()=>send({cmd:'stop'});
   $('saveConfig').onclick=saveConfig; $('addPoint').onclick=()=>addPointRow(); $('fit').onclick=fitAndSend;
   $('blank').onclick=measureBlank; $('pattern').onclick=registerPattern; $('export').onclick=exportCsv;
+  $('clearCalibration').onclick=clearCalibration;
   $('clear').onclick=()=>{history.length=0; updateTimeCharts(); $('count').textContent='0'; setStatus('Historial borrado.');};
 }
 
@@ -39,17 +40,38 @@ async function readLoop(){
 }
 
 async function send(object){if(!writer){setStatus('Conecta primero el ESP32.');return;}await writer.write(new TextEncoder().encode(JSON.stringify(object)+'\n'));}
-function handleLine(line){try{const data=JSON.parse(line);if(data.type==='measurement')addMeasurement(data);else if(data.type==='config')loadConfig(data);else if(data.type==='status')setStatus(data.message||data.event);}catch{setStatus(`Línea no JSON ignorada: ${line.slice(0,80)}`);}}
+function handleLine(line){
+  try{
+    const data=JSON.parse(line);
+    if(data.type==='measurement')addMeasurement(data);
+    else if(data.type==='config')loadConfig(data);
+    else if(data.type==='status'&&data.event==='calibration_cleared')finishCalibrationClear();
+    else if(data.type==='status')setStatus(data.message||data.event);
+  }catch{setStatus(`Línea no JSON ignorada: ${line.slice(0,80)}`);}
+}
 
 function addMeasurement(data){
-  latest=data; history.push({...data,received_at:new Date().toISOString()}); if(history.length>1000)history.shift();
+  const optical=relativeOptics(data.delta_mv); latest=data; history.push({...data,...optical,blank_delta_mv:blankDeltaMv,received_at:new Date().toISOString()}); if(history.length>1000)history.shift();
   $('vOn').textContent=fmt(data.v_on_mv);$('vOff').textContent=fmt(data.v_off_mv);$('delta').textContent=fmt(data.delta_mv);
   $('ntu').textContent=data.ntu==null?'Sin calibrar':fmt(data.ntu);$('stddev').textContent=fmt(data.stddev_mv);$('snr').textContent=fmt(data.snr);
+  updateOpticalMetrics(optical);
   $('saturation').textContent=data.saturated?'Saturado':'Normal';$('saturation').style.color=data.saturated?'#fb7185':'#5eead4';$('count').textContent=data.sequence;
-  const warning=[];if(data.saturated)warning.push('ADC cerca de uno de sus límites.');if(data.timing_overrun)warning.push('Las lecturas no caben en la fase ON/OFF; reduzca N o aumente el semiperiodo.');if(data.extrapolated)warning.push('Resultado fuera del rango calibrado: extrapolación.');
-  $('warning').textContent=warning.join(' ');$('warning').classList.toggle('hidden',!warning.length);updateTimeCharts();
+  updateWarnings(data);updateTimeCharts();
 }
+function updateWarnings(data){const warning=[];if(data?.saturated)warning.push('ADC cerca de uno de sus límites.');if(data?.timing_overrun)warning.push('Las lecturas no caben en la fase ON/OFF; reduzca N o aumente el semiperiodo.');if(data?.extrapolated)warning.push('Resultado fuera del rango calibrado: extrapolación.');$('warning').textContent=warning.join(' ');$('warning').classList.toggle('hidden',!warning.length);}
 function fmt(value){return value==null||!Number.isFinite(Number(value))?'—':Number(value).toFixed(3)}
+function relativeOptics(deltaMv){
+  const signal=Number(deltaMv);
+  if(!(blankDeltaMv>0)||!Number.isFinite(signal)||signal<=0)return {transmittance_rel:null,attenuation_ln:null,absorbance_log10:null};
+  const transmittance=signal/blankDeltaMv;
+  return {transmittance_rel:transmittance,attenuation_ln:-Math.log(transmittance),absorbance_log10:-Math.log10(transmittance)};
+}
+function updateOpticalMetrics(optical=relativeOptics(latest?.delta_mv)){
+  $('transmittance').textContent=optical.transmittance_rel==null?'Sin blanco':fmt(optical.transmittance_rel);
+  $('attenuation').textContent=optical.attenuation_ln==null?'Sin blanco':fmt(optical.attenuation_ln);
+  $('absorbance').textContent=optical.absorbance_log10==null?'Sin blanco':fmt(optical.absorbance_log10);
+  $('blankReference').textContent=fmt(blankDeltaMv);
+}
 function updateTimeCharts(){const view=history.slice(-120), labels=view.map(v=>(v.uptime_ms/1000).toFixed(1));setChart(charts.delta,labels,[view.map(v=>v.delta_mv)]);setChart(charts.ntu,labels,[view.map(v=>v.ntu)]);setChart(charts.voltage,labels,[view.map(v=>v.v_on_mv),view.map(v=>v.v_off_mv)]);}
 function setChart(chart,labels,series){chart.data.labels=labels;series.forEach((s,i)=>chart.data.datasets[i].data=s);chart.update('none');}
 
@@ -60,9 +82,27 @@ function addPointRow(ntu='',delta=''){
   const row=document.createElement('tr');row.innerHTML=`<td><input type="number" step="any" value="${ntu}" aria-label="NTU referencia"></td><td><input type="number" step="any" value="${delta}" aria-label="Delta V"></td><td><button class="danger" aria-label="Eliminar">×</button></td>`;
   row.querySelector('button').onclick=()=>row.remove();$('points').appendChild(row);
 }
-function readPoints(){return [...$('points').rows].map(r=>({ntu:+r.cells[0].querySelector('input').value,delta:+r.cells[1].querySelector('input').value})).filter(p=>Number.isFinite(p.ntu)&&Number.isFinite(p.delta));}
-function measureBlank(){if(!latest){setStatus('Aún no hay una medición para registrar como blanco.');return;}addPointRow(0,latest.delta_mv);setStatus('Blanco añadido como 0 NTU; confirma el valor de referencia antes de ajustar.');}
+function readPoints(){return [...$('points').rows].map(r=>{const ntu=r.cells[0].querySelector('input').value.trim(),delta=r.cells[1].querySelector('input').value.trim();return ntu===''||delta===''?null:{ntu:+ntu,delta:+delta};}).filter(p=>p&&Number.isFinite(p.ntu)&&Number.isFinite(p.delta));}
+function measureBlank(){
+  if(!latest){setStatus('Aún no hay una medición para registrar como blanco.');return;}
+  const signal=Number(latest.delta_mv);if(!(signal>0)){setStatus('El blanco debe tener un ΔV positivo para calcular transmitancia.');return;}
+  blankDeltaMv=signal;addPointRow(0,signal);updateOpticalMetrics();
+  setStatus(`Referencia de agua fijada en ${signal.toFixed(3)} mV y añadida como 0 NTU.`);
+}
 function registerPattern(){if(!latest){setStatus('Aún no hay una medición.');return;}const value=prompt('NTU certificado del patrón:');if(value!==null&&value.trim()!==''&&Number.isFinite(+value))addPointRow(+value,latest.delta_mv);}
+
+async function clearCalibration(){
+  if(!writer){setStatus('Conecta primero el ESP32.');return;}
+  pendingCalibrationClear=true;setStatus('Borrando calibración del ESP32…');
+  try{await send({cmd:'clear_calibration'});}catch(error){pendingCalibrationClear=false;setStatus(`No se pudo enviar el borrado: ${error.message}`);}
+}
+function finishCalibrationClear(){
+  pendingCalibrationClear=false;fitResult=null;
+  $('points').replaceChildren();addPointRow();addPointRow();$('fitStats').textContent='Aún no hay ajuste.';
+  for(const chart of [charts.calibration,charts.residual]){chart.data.datasets.forEach(dataset=>dataset.data=[]);chart.update();}
+  if(latest){latest.ntu=null;latest.calibrated=false;latest.extrapolated=false;updateWarnings(latest);}
+  $('ntu').textContent='Sin calibrar';setStatus('Calibración borrada correctamente del ESP32.');
+}
 
 function solve(matrix, vector){
   const n=vector.length,a=matrix.map((r,i)=>[...r,vector[i]]);for(let i=0;i<n;i++){let p=i;for(let j=i+1;j<n;j++)if(Math.abs(a[j][i])>Math.abs(a[p][i]))p=j;[a[i],a[p]]=[a[p],a[i]];if(Math.abs(a[i][i])<1e-12)throw Error('Puntos insuficientes o degenerados.');for(let j=i+1;j<n;j++){const f=a[j][i]/a[i][i];for(let k=i;k<=n;k++)a[j][k]-=f*a[i][k];}}
@@ -87,5 +127,5 @@ function fitAndSend(){
 }
 function renderCalibration(){const f=fitResult,span=f.max-f.min||1,line=Array.from({length:80},(_,i)=>{const x=f.min-span*.05+i*span*1.1/79;return{x,y:predict(f.model,f.coeffs,f.points,x)}});charts.calibration.data.datasets[0].data=f.points.map(p=>({x:p.delta,y:p.ntu}));charts.calibration.data.datasets[1].data=line;charts.calibration.update();charts.residual.data.datasets[0].data=f.points.map((p,i)=>({x:p.delta,y:f.residuals[i]}));charts.residual.update();}
 
-function exportCsv(){if(!history.length){setStatus('No hay datos para exportar.');return;}const fields=['received_at','sequence','uptime_ms','v_on_mv','v_off_mv','delta_mv','delta_definition','stddev_mv','min_mv','max_mv','snr','cycles','adc_samples','saturated','timing_overrun','calibrated','ntu','extrapolated'];const rows=[fields.join(','),...history.map(r=>fields.map(f=>r[f]??'').join(','))];const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`turbidimetro-${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;a.click();URL.revokeObjectURL(a.href);}
+function exportCsv(){if(!history.length){setStatus('No hay datos para exportar.');return;}const fields=['received_at','sequence','uptime_ms','v_on_mv','v_off_mv','delta_mv','blank_delta_mv','transmittance_rel','attenuation_ln','absorbance_log10','delta_definition','stddev_mv','min_mv','max_mv','snr','cycles','adc_samples','saturated','timing_overrun','calibrated','ntu','extrapolated'];const rows=[fields.join(','),...history.map(r=>fields.map(f=>r[f]??'').join(','))];const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`turbidimetro-${new Date().toISOString().replace(/[:.]/g,'-')}.csv`;a.click();URL.revokeObjectURL(a.href);}
 function setStatus(message){$('status').textContent=message;}

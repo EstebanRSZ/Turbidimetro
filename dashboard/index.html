@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Turbidímetro nefelométrico</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260803-1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=20260803-1" defer></script>
 </head>
 <body>
   <header>
@@ -19,6 +19,7 @@
       <button id="start">Iniciar</button><button id="stop">Detener</button>
       <button id="blank">Medir blanco</button><button id="pattern">Registrar patrón</button>
       <button id="export">Exportar CSV</button><button id="clear" class="danger">Borrar historial</button>
+      <button id="clearCalibration" class="danger">Borrar calibración</button>
       <span id="connection" class="badge offline">Desconectado</span>
     </section>
 
@@ -27,6 +28,10 @@
       <article><span>V OFF</span><strong id="vOff">—</strong><small>mV</small></article>
       <article class="accent"><span>ΔV</span><strong id="delta">—</strong><small>mV</small></article>
       <article class="accent"><span>Turbidez</span><strong id="ntu">Sin calibrar</strong><small>NTU</small></article>
+      <article class="accent"><span>Transmitancia relativa</span><strong id="transmittance">Sin blanco</strong><small>S muestra / S agua</small></article>
+      <article><span>Atenuación</span><strong id="attenuation">Sin blanco</strong><small>−ln(Trel)</small></article>
+      <article><span>Absorbancia</span><strong id="absorbance">Sin blanco</strong><small>−log10(Trel)</small></article>
+      <article><span>Referencia de agua</span><strong id="blankReference">—</strong><small>mV</small></article>
       <article><span>Desv. estándar</span><strong id="stddev">—</strong><small>mV</small></article>
       <article><span>SNR</span><strong id="snr">—</strong><small>ΔV / σ</small></article>
       <article><span>ADC</span><strong id="saturation">Normal</strong><small>estado</small></article>

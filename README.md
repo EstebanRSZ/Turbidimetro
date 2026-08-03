@@ -38,6 +38,8 @@ Abra `http://localhost:8000` en Chrome o Edge, pulse **Conectar puerto** y elija
 
 Registre pares reales `NTU referencia, ΔV medido`. El dashboard ajusta modelos lineal o cuadrático por mínimos cuadrados, o interpola por tramos; muestra R², RMSE, residuos y rango válido. Los coeficientes se envían al ESP32 y opcionalmente se guardan en NVS. Sin calibración, el firmware entrega `ntu: null` y nunca presenta ΔV como NTU.
 
+Para la medición por transmisión a 180°, coloque agua limpia y pulse **Medir blanco**. El dashboard conserva ese `ΔV` como `S_agua` y calcula en las mediciones siguientes `Trel = S_muestra / S_agua`, `A = -ln(Trel)` y `A10 = -log10(Trel)`. La referencia dura hasta que se recarga la página. **Borrar calibración** elimina del ESP32 la conversión persistida de `ΔV` a NTU; no borra la referencia óptica de la sesión.
+
 ## Protocolo Serial
 
 Los comandos también son líneas JSON. Ejemplos:
