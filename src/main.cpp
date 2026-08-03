@@ -6,8 +6,8 @@
 namespace {
 constexpr uint32_t SERIAL_BAUD = 115200;
 constexpr uint8_t ADC_BITS = 12;
-constexpr uint16_t ADC_MAX = (1U << ADC_BITS) - 1;
-constexpr uint16_t SATURATION_MARGIN = 20;
+constexpr uint16_t ADC_SATURATION_LOW_MV = 50;
+constexpr uint16_t ADC_SATURATION_HIGH_MV = 3050;
 constexpr size_t MAX_PIECEWISE_POINTS = 12;
 
 struct MeasurementConfig {
@@ -62,6 +62,10 @@ bool timingOverrun = false;
 
 bool elapsedUs(uint32_t now, uint32_t target) {
   return static_cast<int32_t>(now - target) >= 0;
+}
+
+bool adcNearLimit(double millivolts) {
+  return millivolts <= ADC_SATURATION_LOW_MV || millivolts >= ADC_SATURATION_HIGH_MV;
 }
 
 const char *calibrationName(CalibrationType type) {
@@ -343,11 +347,10 @@ void runAcquisition() {
       if (elapsedUs(nowUs, deadlineUs)) state = AcquisitionState::ReadOn;
       break;
     case AcquisitionState::ReadOn: {
-      const uint16_t raw = analogRead(config.adcPin);
       stateSumMv += analogReadMilliVolts(config.adcPin);
-      saturated |= raw <= SATURATION_MARGIN || raw >= ADC_MAX - SATURATION_MARGIN;
       if (++readCount >= config.readsPerState) {
         cycleOnMv = stateSumMv / readCount;
+        saturated |= adcNearLimit(cycleOnMv);
         timingOverrun |= elapsedUs(micros(), phaseEndUs);
         state = AcquisitionState::HoldOn;
       }
@@ -368,11 +371,10 @@ void runAcquisition() {
       if (elapsedUs(nowUs, deadlineUs)) state = AcquisitionState::ReadOff;
       break;
     case AcquisitionState::ReadOff: {
-      const uint16_t raw = analogRead(config.adcPin);
       stateSumMv += analogReadMilliVolts(config.adcPin);
-      saturated |= raw <= SATURATION_MARGIN || raw >= ADC_MAX - SATURATION_MARGIN;
       if (++readCount >= config.readsPerState) {
         const double offMv = stateSumMv / readCount;
+        saturated |= adcNearLimit(offMv);
         const double deltaMv = config.offMinusOn ? offMv - cycleOnMv : cycleOnMv - offMv;
         sumOnMv += cycleOnMv;
         sumOffMv += offMv;

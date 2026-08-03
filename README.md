@@ -1,4 +1,4 @@
-# Turbidímetro nefelométrico ESP32
+# Turbidímetro por transmitancia ESP32
 
 El proyecto adquiere de forma síncrona la salida de un LTR-3208E con carga resistiva de 10 kΩ y el LED infrarrojo encendido y apagado. El firmware transmite una línea JSON por resultado y el dashboard se conecta por Web Serial.
 
