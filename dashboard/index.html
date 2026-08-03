@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Turbidímetro nefelométrico</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header>
+    <div><span class="eyebrow">ESP32 · OPT101</span><h1>Turbidímetro nefelométrico</h1></div>
+    <button id="connect" class="primary">Conectar puerto</button>
+  </header>
+
+  <main>
+    <section class="toolbar panel">
+      <button id="start">Iniciar</button><button id="stop">Detener</button>
+      <button id="blank">Medir blanco</button><button id="pattern">Registrar patrón</button>
+      <button id="export">Exportar CSV</button><button id="clear" class="danger">Borrar historial</button>
+      <span id="connection" class="badge offline">Desconectado</span>
+    </section>
+
+    <section class="metrics">
+      <article><span>V ON</span><strong id="vOn">—</strong><small>mV</small></article>
+      <article><span>V OFF</span><strong id="vOff">—</strong><small>mV</small></article>
+      <article class="accent"><span>ΔV</span><strong id="delta">—</strong><small>mV</small></article>
+      <article class="accent"><span>Turbidez</span><strong id="ntu">Sin calibrar</strong><small>NTU</small></article>
+      <article><span>Desv. estándar</span><strong id="stddev">—</strong><small>mV</small></article>
+      <article><span>SNR</span><strong id="snr">—</strong><small>ΔV / σ</small></article>
+      <article><span>ADC</span><strong id="saturation">Normal</strong><small>estado</small></article>
+      <article><span>Mediciones</span><strong id="count">0</strong><small>resultados</small></article>
+    </section>
+
+    <section id="warning" class="warning hidden"></section>
+    <section class="charts">
+      <article class="panel"><h2>ΔV frente al tiempo</h2><canvas id="deltaChart"></canvas></article>
+      <article class="panel"><h2>NTU frente al tiempo</h2><canvas id="ntuChart"></canvas></article>
+      <article class="panel wide"><h2>V ON y V OFF</h2><canvas id="voltageChart"></canvas></article>
+      <article class="panel"><h2>Curva de calibración</h2><canvas id="calibrationChart"></canvas></article>
+      <article class="panel"><h2>Residuos</h2><canvas id="residualChart"></canvas></article>
+    </section>
+
+    <section class="forms">
+      <article class="panel">
+        <h2>Configuración de adquisición</h2>
+        <div class="grid-form">
+          <label>GPIO LED<input id="ledPin" type="number" min="0" max="39" value="25"></label>
+          <label>GPIO ADC1<input id="adcPin" type="number" value="34"></label>
+          <label>Estabilización (µs)<input id="settleUs" type="number" min="10" value="100"></label>
+          <label>Semiperiodo ON/OFF (µs)<input id="halfPeriodUs" type="number" min="20" value="250"></label>
+          <label>Lecturas por estado<input id="reads" type="number" min="1" value="4"></label>
+          <label>Ciclos por resultado<input id="cycles" type="number" min="2" value="32"></label>
+          <label>Intervalo (ms)<input id="interval" type="number" min="0" value="500"></label>
+          <label>Definición de ΔV<select id="deltaMode"><option value="off-on">V OFF − V ON (LTR-3208E)</option><option value="on-off">V ON − V OFF (OPT101)</option></select></label>
+        </div>
+        <label class="check"><input id="saveNvs" type="checkbox" checked> Guardar calibración en NVS</label>
+        <button id="saveConfig" class="primary">Guardar configuración</button>
+      </article>
+
+      <article class="panel">
+        <div class="section-title"><div><h2>Calibración</h2><p>Pares medidos, sin valores predeterminados.</p></div><button id="addPoint">Añadir punto</button></div>
+        <label>Modelo<select id="model"><option value="linear">Lineal</option><option value="quadratic">Cuadrático</option><option value="piecewise">Por tramos</option></select></label>
+        <div class="table-wrap"><table><thead><tr><th>NTU referencia</th><th>ΔV medido (mV)</th><th></th></tr></thead><tbody id="points"></tbody></table></div>
+        <div id="fitStats" class="fit-stats">Aún no hay ajuste.</div>
+        <button id="fit" class="primary">Ajustar y enviar calibración</button>
+      </article>
+    </section>
+    <footer id="status">Listo para conectar.</footer>
+  </main>
+</body>
+</html>
