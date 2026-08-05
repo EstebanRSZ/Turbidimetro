@@ -288,16 +288,29 @@ function measureBlank(){
   setStatus(`Blanco fijado en ${signal.toFixed(3)} mV y añadido como punto de dosis 0.`);
 }
 
+// Registra UN punto de calibración con la media de las últimas N lecturas. La
+// tabla lleva una fila por concentración: repetir la misma dosis crearía filas
+// con C duplicada y el ajuste la rechazaría.
 function registerPoint(){
-  if(!latest){setStatus('Aún no hay una medición.');return;}
-  const response=responseOf(latest);
-  if(response==null){setStatus('Sin blanco todavía: mide primero el blanco de agua.');return;}
+  const requested=Math.max(1,Math.round(+$('averageCount').value)||1);
+  const samples=history.slice(-requested).map(responseOf).filter(v=>v!=null);
+  if(!samples.length){setStatus('Sin lecturas válidas. ¿Ya mediste el blanco de agua?');return;}
+  const n=samples.length;
+  const mean=samples.reduce((s,v)=>s+v,0)/n;
+  // σ muestral (n−1): dispersión ENTRE resultados, que es la que se reporta como
+  // repetibilidad. Captura deriva y sedimentación, cosa que el promediado
+  // interno de cada resultado no puede ver.
+  const sd=n>1?Math.sqrt(samples.reduce((s,v)=>s+(v-mean)**2,0)/(n-1)):NaN;
+
   const prompts={stock:'Madre acumulada añadida (mL):',mass:'Masa acumulada añadida (g):',direct:`Concentración (${concentrationUnit()}):`};
   const value=prompt(prompts[dosingParams().mode]);
   if(value===null||value.trim()===''||!Number.isFinite(+value))return;
-  addPointRow(+value,response);
-  const c=concentrationFrom(+value);
-  setStatus(`Punto registrado: ${fmtConcentration(c)} ${concentrationUnit()} con ${currentMode().responseName} = ${response.toFixed(4)}.`);
+  addPointRow(+value,Number(mean.toPrecision(6)));
+
+  const c=concentrationFrom(+value), unit=currentMode().responseUnit;
+  const spread=Number.isFinite(sd)?` ± ${sd.toPrecision(3)}${unit} (σ)`:'';
+  const short=n<requested?` Solo había ${n} lecturas de las ${requested} pedidas.`:'';
+  setStatus(`${fmtConcentration(c)} ${concentrationUnit()} → ${currentMode().responseName} = ${mean.toPrecision(5)}${unit}${spread}, n = ${n}.${short}`);
 }
 
 async function clearCalibration(){

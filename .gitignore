@@ -7,3 +7,17 @@
 Anteproyecto_Turbidimetro.pdf
 .claude
 .codex
+
+# Archivos auxiliares de LaTeX (docs/). El .tex y el .pdf si se versionan.
+docs/*.aux
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.lof
+docs/*.lot
+docs/*.fls
+docs/*.fdb_latexmk
+docs/*.synctex.gz
+
+docs
+data

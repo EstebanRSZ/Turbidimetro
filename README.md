@@ -2,6 +2,8 @@
 
 El proyecto adquiere de forma síncrona la salida de un fotodetector (LTR-3208E con carga resistiva de 10 kΩ, u OPT101) con el LED infrarrojo encendido y apagado. El firmware transmite una línea JSON por resultado y el dashboard se conecta por Web Serial.
 
+> **Guía de estudio completa**: [`docs/guia-turbidimetro.tex`](docs/guia-turbidimetro.tex) (122 páginas). Cubre la física de la dispersión, el diseño y los cálculos del circuito, el método de medida, la calibración y el análisis de los datos de `data/`. Se compila con `latexmk -pdf docs/guia-turbidimetro.tex`.
+
 Soporta las dos geometrías de medición de turbidez, seleccionables desde el dashboard, porque cada una es válida en un rango distinto.
 
 ## Modos de medición
